@@ -32,7 +32,7 @@ Severity is fixed per rule, so reruns stay stable. A `review` finding gets the s
 
 ## Output
 
-Write one file per contract: `compliance-findings/<contract-file-name>.md`.
+First pick your baseline branch (see "Delivering the result"), then write one file per contract: `compliance-findings/<contract-file-name>.md`.
 The file must contain **nothing run-specific**: no dates, no run IDs, no timestamps.
 If the file already exists and your rule table (every status and clause) is identical to the one in it, **leave the file untouched**, even if you would word the findings differently. Only real drift may show up as a diff.
 
@@ -70,10 +70,18 @@ If a contract has no violations and nothing for review, write the table and the 
 
 ## Delivering the result
 
-1. Work on a new branch `claude/compliance-<YYYY-MM-DD>` from `main`.
-2. Commit only files under `compliance-findings/`.
-3. If nothing differs from `main`, stop. Do not open a PR. "No drift" is the normal case.
-4. Otherwise open a PR into `main`:
-   - Title: `Compliance drift <YYYY-MM-DD>`.
-   - Body: one line per contract with its result counts, then the list of High findings.
-   - Add the labels `compliance`, and also `needs-human-review` if any finding is for review. If the labels don't exist in the repo, open the PR without them. Don't fail.
+Pick your baseline **before** you write any file. At most one compliance PR may be open at a time.
+
+1. Look for an open PR whose head branch starts with `claude/compliance-` (`gh pr list --state open --json number,headRefName`).
+2. **If one exists**, that PR is your baseline. A human has not merged it yet, so don't open another one.
+   - Check out its branch and merge `origin/main` into it, so contracts and policy are current. If the merge conflicts, abort it and stop. Say so in your final report.
+   - Write the findings as described above, comparing against the files on this branch.
+   - If nothing changed, stop.
+   - Otherwise commit only files under `compliance-findings/`, push to the same branch, and add a PR comment: one line per contract whose result changed.
+3. **If none exists**, `main` is your baseline.
+   - Create a new branch `claude/compliance-<YYYY-MM-DD>` from `main` and write the findings.
+   - If nothing differs from `main`, stop. Do not open a PR. "No drift" is the normal case.
+   - Otherwise commit only files under `compliance-findings/`, push, and open a PR into `main`:
+     - Title: `Compliance drift <YYYY-MM-DD>`.
+     - Body: one line per contract with its result counts, then the list of High findings.
+     - Add the labels `compliance`, and also `needs-human-review` if any finding is for review. If the labels don't exist in the repo, open the PR without them. Don't fail.
