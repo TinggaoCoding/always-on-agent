@@ -77,9 +77,16 @@ async function loadGitHub() {
   }
 }
 
+// Cron-Zeile des Workflows, damit die Seite "nächster Lauf" anzeigen kann.
+async function loadSchedule() {
+  const yml = await readFile(join(root, ".github", "workflows", "compliance-drift.yml"), "utf8").catch(() => "");
+  return (yml.match(/cron:\s*"([^"]+)"/) || [])[1] ?? null;
+}
+
 async function loadData() {
-  const [issues, deploys, compliance, github] = await Promise.all([loadIssues(), loadDeploys(), loadCompliance(), loadGitHub()]);
-  return { generated_at: new Date().toISOString(), issues, deploys, compliance, github };
+  const [issues, deploys, compliance, github, schedule] =
+    await Promise.all([loadIssues(), loadDeploys(), loadCompliance(), loadGitHub(), loadSchedule()]);
+  return { generated_at: new Date().toISOString(), issues, deploys, compliance, github, schedule };
 }
 
 createServer(async (req, res) => {
