@@ -23,7 +23,7 @@ Globex's aggregate liability is capped at the fees paid in the 12 months precedi
 Globex will provide the customer with at least 30 days' written notice before engaging any new subprocessor. The customer may object to a new subprocessor within 15 days, in which case Globex will either propose an alternative or the customer may terminate the Agreement.
 
 ## 7. Security Incidents
-Globex will notify the customer within 96 hours of detecting a confirmed security incident affecting the customer's data.
+Globex will notify the customer within 24 hours of detecting a confirmed security incident affecting the customer's data.
 
 ## 8. Governing Law
 This Agreement is governed by the laws of England and Wales.
