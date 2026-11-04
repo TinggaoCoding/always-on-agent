@@ -6,219 +6,628 @@
 <title>Always-On Ops</title>
 <style>
   :root {
-    --bg: #f6f7f9; --card: #fff; --text: #1c2330; --muted: #667085; --line: #e3e6eb;
-    --p0: #c62828; --p1: #e65100; --p2: #b58900; --p3: #2e7d32; --none: #667085;
-    --ok: #2e7d32; --warn: #b58900; --bad: #c62828; --accent: #1f4fd8;
+    color-scheme: light;
+    --page: #f9f9f7; --surface: #fcfcfb; --ink: #0b0b0b; --ink2: #52514e; --muted: #898781;
+    --grid: #e1e0d9; --axis: #c3c2b7; --ring: rgba(11,11,11,.10);
+    --blue: #2a78d6; --link: #1c5cab;
+    /* Statusfarben: fest, immer zusammen mit Icon + Text */
+    --good: #0ca30c; --warn: #fab219; --serious: #ec835a; --crit: #d03b3b;
   }
   @media (prefers-color-scheme: dark) {
-    :root { --bg: #111418; --card: #1a1f26; --text: #e6e9ee; --muted: #98a2b3; --line: #2b323c; --accent: #7aa2ff; }
+    :root {
+      color-scheme: dark;
+      --page: #0d0d0d; --surface: #1a1a19; --ink: #f0efec; --ink2: #c3c2b7;
+      --grid: #2c2c2a; --axis: #383835; --ring: rgba(255,255,255,.10);
+      --blue: #3987e5; --link: #86b6ef;
+    }
   }
   * { box-sizing: border-box; }
-  body { margin: 0; font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; background: var(--bg); color: var(--text); }
-  header { padding: 20px 24px 0; max-width: 1100px; margin: 0 auto; }
-  h1 { font-size: 20px; margin: 0 0 4px; }
-  .sub { color: var(--muted); font-size: 12px; }
-  main { max-width: 1100px; margin: 0 auto; padding: 16px 24px 48px; }
-  .stats { display: flex; gap: 12px; flex-wrap: wrap; margin: 16px 0; }
-  .stat { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 10px 16px; min-width: 120px; }
-  .stat b { display: block; font-size: 22px; }
-  .stat span { color: var(--muted); font-size: 12px; }
-  nav { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin-bottom: 16px; }
-  nav button { background: none; border: 0; padding: 8px 14px; font: inherit; color: var(--muted); cursor: pointer; border-bottom: 2px solid transparent; }
-  nav button[aria-selected="true"] { color: var(--text); border-color: var(--accent); font-weight: 600; }
-  .filters { display: flex; gap: 12px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
-  input[type=search], select { font: inherit; padding: 5px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--card); color: var(--text); }
-  table { width: 100%; border-collapse: collapse; background: var(--card); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
-  th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
-  th { font-size: 12px; color: var(--muted); font-weight: 600; }
-  tr:last-child td { border-bottom: 0; }
-  tr.row { cursor: pointer; }
-  tr.row:hover td { background: color-mix(in srgb, var(--accent) 6%, transparent); }
-  .badge { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 12px; font-weight: 600; color: #fff; background: var(--none); }
-  .P0, .violation, .High { background: var(--bad); }
-  .P1 { background: var(--p1); }
-  .P2, .review, .Medium { background: var(--p2); }
-  .P3, .compliant, .Low { background: var(--ok); }
-  .chip { display: inline-block; padding: 0 7px; margin: 0 4px 2px 0; border: 1px solid var(--line); border-radius: 10px; font-size: 12px; color: var(--muted); }
-  .chip.human { border-color: var(--p1); color: var(--p1); font-weight: 600; }
-  .detail td { background: var(--bg); }
-  .detail h4 { margin: 8px 0 4px; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
-  .detail pre { margin: 0; white-space: pre-wrap; font: inherit; }
-  .muted { color: var(--muted); }
-  .card { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; margin-bottom: 16px; }
-  .card h3 { margin: 0 0 2px; font-size: 16px; }
-  .card table { margin: 10px 0; }
-  details { border-top: 1px solid var(--line); padding: 8px 0; }
-  details summary { cursor: pointer; font-weight: 600; }
-  dl { margin: 8px 0 0; display: grid; grid-template-columns: 140px 1fr; gap: 4px 12px; }
-  dt { color: var(--muted); }
-  dd { margin: 0; }
-  .empty { padding: 24px; text-align: center; color: var(--muted); }
+  body { margin: 0; font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; background: var(--page); color: var(--ink); }
+  :focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+  .ic { flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .muted { color: var(--ink2); }
+  .grow { flex: 1; min-width: 0; }
+
+  /* Füllfarben nach Bedeutung */
+  .f-crit { --c: var(--crit); } .f-serious { --c: var(--serious); --on: #0b0b0b; } .f-warn { --c: var(--warn); --on: #0b0b0b; }
+  .f-good { --c: var(--good); } .f-info { --c: var(--blue); } .f-none { --c: var(--muted); }
+  .pill, .cell, .seg, .kpi-ic, .node, .run-dot, .sw { background: var(--c); color: var(--on, #fff); }
+  .pill { display: inline-flex; align-items: center; gap: 4px; padding: 1px 8px 1px 6px; border-radius: 999px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+  .sw { display: inline-block; width: 10px; height: 10px; border-radius: 50%; }
+
+  /* Kopf */
+  .top { max-width: 1180px; margin: 0 auto; padding: 20px 24px 0; display: flex; align-items: center; justify-content: space-between; gap: 12px 16px; flex-wrap: wrap; }
+  .brand { display: flex; align-items: center; gap: 10px; }
+  .brand h1 { font-size: 20px; margin: 0; }
+  .logo { width: 36px; height: 36px; border-radius: 10px; background: var(--blue); color: #fff; display: grid; place-items: center; }
+  .live { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; background: var(--surface); border: 1px solid var(--ring); border-radius: 999px; padding: 6px 14px; font-size: 13px; color: var(--ink2); }
+  .live b { color: var(--ink); }
+  .dot { position: relative; width: 10px; height: 10px; border-radius: 50%; background: var(--good); flex: none; }
+  .dot.off { background: var(--muted); }
+  .dot::after { content: ""; position: absolute; inset: 0; border-radius: 50%; background: inherit; opacity: 0; }
+
+  main { max-width: 1180px; margin: 0 auto; padding: 18px 24px 48px; }
+  .foot { margin-top: 24px; font-size: 12px; color: var(--ink2); }
+
+  /* Kennzahlen */
+  .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 18px; }
+  .kpi { display: flex; align-items: center; gap: 12px; text-align: left; font: inherit; color: inherit; background: var(--surface); border: 1px solid var(--ring); border-radius: 12px; padding: 12px 14px; cursor: pointer; }
+  .kpi b { display: block; font-size: 26px; line-height: 1.15; font-weight: 600; }
+  .kpi small { color: var(--ink2); font-size: 12px; }
+  .kpi-ic { width: 38px; height: 38px; border-radius: 10px; display: grid; place-items: center; flex: none; }
+
+  /* Tabs */
+  nav { display: flex; gap: 4px; margin-bottom: 16px; border-bottom: 1px solid var(--grid); }
+  nav button { display: inline-flex; gap: 6px; align-items: center; background: none; border: 0; border-bottom: 2px solid transparent; padding: 8px 14px; font: inherit; color: var(--ink2); cursor: pointer; }
+  nav button[aria-selected="true"] { color: var(--ink); border-color: var(--blue); font-weight: 600; }
+
+  /* Karten & Raster */
+  .grid { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr); gap: 16px; }
+  .stack { display: grid; gap: 16px; align-content: start; }
+  .full { grid-column: 1 / -1; }
+  @media (max-width: 880px) { .grid { grid-template-columns: minmax(0, 1fr); } }
+  .card { background: var(--surface); border: 1px solid var(--ring); border-radius: 12px; padding: 16px 18px; }
+  .card > h2 { display: flex; gap: 8px; align-items: center; font-size: 15px; margin: 0 0 14px; }
+  .card > h2 .ic { color: var(--ink2); }
+  .legend { display: flex; flex-wrap: wrap; gap: 8px 14px; margin-top: 14px; font-size: 12px; color: var(--ink2); align-items: center; }
+  .legend > span { display: inline-flex; gap: 6px; align-items: center; }
+  .card-foot { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 14px; font-size: 12px; }
+  .link, a { color: var(--link); }
+  .link { background: none; border: 0; font: inherit; cursor: pointer; padding: 0; }
+  .empty { padding: 24px; text-align: center; color: var(--ink2); }
+
+  /* Compliance-Matrix */
+  .scroll-x { overflow-x: auto; padding: 4px; margin: -4px; }
+  .heat { display: grid; grid-template-columns: minmax(120px, max-content) repeat(var(--cols), minmax(34px, 1fr)) max-content; gap: 2px; align-items: center; }
+  .heat-h { font-size: 11px; color: var(--ink2); text-align: center; padding-bottom: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .heat-name { display: flex; gap: 6px; align-items: center; font: inherit; font-weight: 600; background: none; border: 0; color: var(--ink); cursor: pointer; padding: 0 10px 0 0; text-align: left; }
+  .heat-name .ic { color: var(--ink2); }
+  .cell { height: 40px; border: 0; border-radius: 4px; display: grid; place-items: center; cursor: pointer; }
+  .cell.drift { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--ink); }
+  .heat-sum { display: flex; gap: 8px; padding-left: 12px; font-size: 12px; color: var(--ink2); }
+  .heat-sum span { display: inline-flex; gap: 3px; align-items: center; }
+  .mini { width: 16px; height: 16px; border-radius: 50%; display: grid; place-items: center; }
+  .drift-key { width: 14px; height: 14px; border-radius: 3px; box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--ink); margin: 0 3px; }
+
+  /* Severity-Balken */
+  .sbar { display: flex; gap: 2px; height: 24px; }
+  .seg { border: 0; flex-basis: 0; min-width: 24px; display: grid; place-items: center; font: 600 12px system-ui, sans-serif; cursor: pointer; }
+  .seg:first-child { border-radius: 4px 0 0 4px; } .seg:last-child { border-radius: 0 4px 4px 0; } .seg:only-child { border-radius: 4px; }
+
+  /* Agent-Läufe */
+  .runs { position: relative; display: flex; justify-content: space-between; align-items: flex-start; gap: 4px; padding: 2px 2px 0; }
+  .runs::before { content: ""; position: absolute; left: 16px; right: 16px; top: 15px; height: 1px; background: var(--axis); }
+  .run { position: relative; display: flex; flex-direction: column; align-items: center; gap: 4px; text-decoration: none; color: var(--ink2); font-size: 11px; line-height: 1.25; text-align: center; font-variant-numeric: tabular-nums; }
+  .run b { color: var(--ink); font-weight: 600; }
+  .run-dot { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; box-shadow: 0 0 0 2px var(--surface); }
+  .run.next .run-dot { background: var(--surface); color: var(--ink2); box-shadow: inset 0 0 0 1.5px var(--axis), 0 0 0 2px var(--surface); }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  td, th { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--grid); font-variant-numeric: tabular-nums; }
+  th { font-size: 12px; color: var(--ink2); font-weight: 600; }
+
+  /* Zeitachse Deploys & Incidents */
+  .tl { position: relative; }
+  .tl .rail { position: absolute; left: 92px; top: 0; pointer-events: none; overflow: visible; }
+  .rail-line { stroke: var(--axis); stroke-width: 1; }
+  .arc { fill: none; stroke-width: 2; stroke-linecap: round; transition: opacity .15s; }
+  .arc.deploy { stroke: var(--blue); } .arc.rel { stroke: var(--ink2); }
+  .tl-row { display: grid; grid-template-columns: 92px 64px minmax(0, 1fr); height: 58px; align-items: center; border-radius: 8px; cursor: pointer; transition: opacity .15s; }
+  .tl-row:hover { background: color-mix(in srgb, var(--blue) 7%, transparent); }
+  .tl-time { font-size: 12px; color: var(--ink2); line-height: 1.3; font-variant-numeric: tabular-nums; padding-left: 4px; }
+  .tl-time b { display: block; color: var(--ink); font-weight: 600; }
+  .node { justify-self: end; margin-right: 4px; width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; box-shadow: 0 0 0 2px var(--surface); position: relative; z-index: 1; }
+  .tl-main { min-width: 0; padding: 0 8px 0 10px; }
+  .tl-1, .tl-2 { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tl-1 > * { margin-right: 6px; vertical-align: middle; }
+  .tl-2 { font-size: 12px; color: var(--ink2); }
+  .tl-2 > span { display: inline-flex; gap: 4px; align-items: center; margin-right: 12px; vertical-align: middle; }
+  .focusing .tl-row:not(.hl) { opacity: .35; }
+  .focusing .arc:not(.hl) { opacity: .12; }
+  .line-key { width: 18px; height: 2px; border-radius: 1px; background: var(--blue); }
+  .line-key.rel { background: var(--ink2); }
+
+  /* Issues */
+  .filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 14px; }
+  .chipbtn { display: inline-flex; gap: 6px; align-items: center; font: inherit; font-size: 13px; padding: 5px 12px; border-radius: 999px; border: 1px solid var(--ring); background: var(--surface); color: var(--ink); cursor: pointer; }
+  .chipbtn[aria-pressed="true"] { background: var(--ink); color: var(--surface); }
+  .chipbtn[aria-pressed="true"] .muted { color: inherit; opacity: .7; }
+  .search { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--ring); border-radius: 999px; padding: 4px 12px; background: var(--surface); color: var(--ink2); }
+  .search input { border: 0; outline: 0; background: none; font: inherit; color: var(--ink); width: 170px; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 14px; align-items: start; }
+  .icard { background: var(--surface); border: 1px solid var(--ring); border-left: 4px solid var(--c); border-radius: 10px; padding: 12px 14px; }
+  .icard header { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+  .icard h3 { font-size: 15px; margin: 8px 0; }
+  .who { display: inline-flex; gap: 4px; align-items: center; color: var(--ink2); font-size: 12px; }
+  .chip { display: inline-flex; gap: 4px; align-items: center; padding: 0 8px; border: 1px solid var(--ring); border-radius: 999px; font-size: 12px; color: var(--ink2); margin: 0 4px 4px 0; }
+  .chip.human { border-color: var(--serious); color: var(--ink); font-weight: 600; }
+  details > summary { cursor: pointer; list-style: none; display: flex; gap: 6px; align-items: center; font-weight: 600; font-size: 13px; }
+  details > summary::-webkit-details-marker { display: none; }
+  details > summary > .chev { transition: transform .15s; color: var(--ink2); }
+  details[open] > summary > .chev { transform: rotate(90deg); }
+  .icard details > summary { color: var(--link); margin-top: 6px; }
+  .sec h4 { display: flex; gap: 6px; align-items: center; margin: 12px 0 2px; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--ink2); }
+  .sec p { margin: 0; white-space: pre-wrap; font-size: 13px; }
+
+  /* Compliance-Detail */
+  .ccard { margin-bottom: 16px; }
+  .ccard-h { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+  .ccard-h h2 { margin: 0; font-size: 16px; }
+  .counts { display: flex; gap: 6px; }
+  .drift-banner { display: flex; gap: 8px; align-items: center; padding: 8px 12px; border-radius: 8px; background: color-mix(in srgb, var(--warn) 20%, transparent); margin-bottom: 10px; font-size: 13px; }
+  .rules { list-style: none; margin: 0 0 6px; padding: 0; }
+  .rules li { display: flex; align-items: center; gap: 8px; padding: 7px 6px; border-bottom: 1px solid var(--grid); }
+  .rules li.drift { background: color-mix(in srgb, var(--warn) 12%, transparent); border-radius: 6px; }
+  .fd { border-top: 1px solid var(--grid); padding: 8px 0; }
+  .tag { font-size: 11px; font-weight: 600; padding: 0 6px; border-radius: 4px; border: 1px solid var(--ink2); color: var(--ink2); }
+  dl { margin: 8px 0 0 22px; display: grid; grid-template-columns: 150px 1fr; gap: 4px 12px; font-size: 13px; }
+  dt { color: var(--ink2); } dd { margin: 0; }
+
+  /* Tooltip */
+  .tip { position: fixed; z-index: 10; max-width: 300px; background: var(--surface); color: var(--ink); border: 1px solid var(--ring); border-radius: 8px; box-shadow: 0 6px 24px rgba(0,0,0,.18); padding: 8px 10px; font-size: 12px; line-height: 1.45; pointer-events: none; }
+  .tip b { display: block; font-size: 14px; }
+  .tip-drift { display: flex; gap: 4px; align-items: center; margin-top: 4px; font-weight: 600; }
+
+  /* Bewegung nur, wenn niemand reduzierte Bewegung eingestellt hat */
+  @media (prefers-reduced-motion: no-preference) {
+    .dot.on::after { animation: ping 2s ease-out infinite; }
+    #view > * { animation: rise .4s ease-out both; }
+    .cell, .icard, .run, .ccard { animation: pop .4s ease-out both; animation-delay: calc(var(--i, 0) * 28ms); }
+    .tl-row { animation: rise .4s ease-out both; animation-delay: calc(var(--i, 0) * 40ms); }
+    .cell.drift { animation: pop .4s ease-out both, pulse 1.6s ease-in-out .4s infinite; }
+    .sbar { animation: reveal .9s cubic-bezier(.2, .7, .2, 1) both; }
+    .arc { stroke-dasharray: 1; stroke-dashoffset: 1; animation: draw 1s .5s ease-out forwards; }
+    .kpi, .cell, .seg { transition: transform .15s; }
+    .kpi:hover { transform: translateY(-2px); }
+    .cell:hover, .seg:hover { transform: scale(1.06); }
+    .flash { animation: flash 1.4s ease-out; }
+    @keyframes ping { from { transform: scale(1); opacity: .55; } to { transform: scale(2.8); opacity: 0; } }
+    @keyframes rise { from { opacity: 0; transform: translateY(6px); } }
+    @keyframes pop { from { opacity: 0; transform: scale(.85); } }
+    @keyframes reveal { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
+    @keyframes draw { to { stroke-dashoffset: 0; } }
+    @keyframes pulse { 50% { box-shadow: 0 0 0 2px var(--surface), 0 0 0 6px color-mix(in srgb, var(--ink) 35%, transparent); } }
+    @keyframes flash { from { box-shadow: 0 0 0 3px var(--blue); } }
+  }
 </style>
 </head>
 <body>
-<header>
-  <h1>Always-On Ops</h1>
-  <div class="sub" id="meta">lädt …</div>
+<header class="top">
+  <div class="brand"><span class="logo" id="logo"></span><h1>Always-On Ops</h1></div>
+  <div class="live" id="live">lädt …</div>
 </header>
 <main>
-  <div class="stats" id="stats"></div>
+  <div class="kpis" id="kpis"></div>
   <nav role="tablist" id="tabs"></nav>
-  <section id="view"></section>
+  <section id="view"><p class="empty">lädt Daten aus Repo und GitHub …</p></section>
+  <div class="foot" id="meta"></div>
 </main>
+<div class="tip" id="tip" role="tooltip" hidden></div>
 <script>
 // Alle Texte aus den Repo-Daten gehen über textContent, nie über innerHTML.
+const $ = (id) => document.getElementById(id);
 const el = (tag, props = {}, ...kids) => {
   const e = Object.assign(document.createElement(tag), props);
-  for (const k of kids.flat()) if (k != null) e.append(k);
+  for (const k of kids.flat(2)) if (k != null && k !== false) e.append(k);
   return e;
 };
-const badge = (text, cls) => el("span", { className: `badge ${cls ?? text}`, textContent: text });
-const fmt = (iso) => iso ? iso.replace("T", " ").replace(/:\d\d(\.\d+)?Z$/, " UTC") : "–";
+const svg = (tag, attrs = {}, ...kids) => {
+  const e = document.createElementNS("http://www.w3.org/2000/svg", tag);
+  for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
+  for (const k of kids.flat(2)) if (k) e.append(k);
+  return e;
+};
 
-let data, tab = "issues";
-const state = { sev: "", human: false, q: "" };
+const ICONS = {
+  check: [["polyline", { points: "5 12.5 10 17 19 7" }]],
+  x: [["path", { d: "M6.5 6.5l11 11M17.5 6.5l-11 11" }]],
+  bang: [["path", { d: "M12 5v9M12 18.5v.01" }]],
+  alert: [["path", { d: "M12 3.5L21.5 20h-19z" }], ["path", { d: "M12 10v4.5M12 17.2v.01" }]],
+  eye: [["path", { d: "M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z" }], ["circle", { cx: 12, cy: 12, r: 3 }]],
+  rocket: [["path", { d: "M12 2.5c3.5 2.5 5 7 3 12.5H9C7 9.5 8.5 5 12 2.5z" }], ["circle", { cx: 12, cy: 9, r: 1.6 }], ["path", { d: "M9 15l-3 3.5 3.5-.5M15 15l3 3.5-3.5-.5M12 18v3.5" }]],
+  file: [["path", { d: "M6 2.5h8l4 4v15H6z" }], ["path", { d: "M14 2.5v4h4M9 12h6M9 16h6" }]],
+  pr: [["circle", { cx: 6, cy: 5.5, r: 2.2 }], ["circle", { cx: 6, cy: 18.5, r: 2.2 }], ["circle", { cx: 18, cy: 18.5, r: 2.2 }], ["path", { d: "M6 7.7v8.6M18 16.3V9a3 3 0 0 0-3-3h-4M13 3.5L10.5 6 13 8.5" }]],
+  clock: [["circle", { cx: 12, cy: 12, r: 9 }], ["path", { d: "M12 7v5l3 2" }]],
+  inbox: [["path", { d: "M3 13l3-8h12l3 8v6H3z" }], ["path", { d: "M3 13h5l1.5 2.5h5L16 13h5" }]],
+  user: [["circle", { cx: 12, cy: 8, r: 3.5 }], ["path", { d: "M5 20.5c1-3.5 3.8-5.5 7-5.5s6 2 7 5.5" }]],
+  activity: [["polyline", { points: "2 12 6 12 9 4.5 15 19.5 18 12 22 12" }]],
+  grid: [["rect", { x: 3.5, y: 3.5, width: 7, height: 7, rx: 1.5 }], ["rect", { x: 13.5, y: 3.5, width: 7, height: 7, rx: 1.5 }], ["rect", { x: 3.5, y: 13.5, width: 7, height: 7, rx: 1.5 }], ["rect", { x: 13.5, y: 13.5, width: 7, height: 7, rx: 1.5 }]],
+  shield: [["path", { d: "M12 2.5l8 3v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10v-6z" }], ["polyline", { points: "8.5 12 11 14.5 15.5 9.5" }]],
+  search: [["circle", { cx: 11, cy: 11, r: 6.5 }], ["path", { d: "M16 16l4.5 4.5" }]],
+  chevron: [["polyline", { points: "9 6 15 12 9 18" }]],
+  rollback: [["path", { d: "M9 14L4 9l5-5" }], ["path", { d: "M4 9h10.5a5.5 5.5 0 0 1 0 11H11" }]],
+  link: [["path", { d: "M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1" }]],
+};
+const icon = (name, size = 16, cls = "") => svg("svg", { viewBox: "0 0 24 24", width: size, height: size, class: `ic ${cls}`, "aria-hidden": "true" },
+  ICONS[name].map(([t, a]) => svg(t, a)));
 
-const TABS = { issues: "Issues", deploys: "Deploys", compliance: "Compliance" };
+const STATUS = {
+  violation: { cls: "crit", icon: "x", label: "Verstoß" },
+  review: { cls: "warn", icon: "bang", label: "Prüfen" },
+  compliant: { cls: "good", icon: "check", label: "OK" },
+};
+const SEV = {
+  P0: { cls: "crit", icon: "alert", label: "P0", long: "kritisch, alle Kunden" },
+  P1: { cls: "serious", icon: "alert", label: "P1", long: "hoch, ein Tenant" },
+  P2: { cls: "warn", icon: "bang", label: "P2", long: "mittel" },
+  P3: { cls: "info", icon: "bang", label: "P3", long: "niedrig" },
+  null: { cls: "none", icon: "inbox", label: "ohne", long: "ohne Severity (kein Incident oder Entscheidung offen)" },
+};
+const SEV_ORDER = ["P0", "P1", "P2", "P3", null];
+const FSEV = { High: { cls: "crit", icon: "alert", label: "High" }, Medium: { cls: "warn", icon: "bang", label: "Medium" }, Low: { cls: "info", icon: "bang", label: "Low" } };
+// Kurze Spaltenköpfe für die Matrix; der volle Regelname steht im Tooltip und im Compliance-Tab.
+const SHORT = { "Data residency": "Region", "Audit rights": "Audit", "Termination": "Exit", "Liability cap": "Haftung", "Subprocessors": "Subproc.", "Data breach notification": "Breach", "Governing law": "Recht" };
+const RUN_EVENT = { schedule: "geplant", workflow_dispatch: "manuell" };
+const SEC_ICON = { "Titel": "file", "Severity": "alert", "Beleg": "search", "Empfohlene Maßnahme": "check", "Unsicherheiten": "bang" };
 
-function renderStats() {
-  const open = data.issues.filter((i) => i.status === "open");
-  const comp = data.compliance.flatMap((c) => c.rules);
-  const stat = (n, label) => el("div", { className: "stat" }, el("b", { textContent: n }), el("span", { textContent: label }));
-  document.getElementById("stats").replaceChildren(
-    stat(open.length, "offene Issues"),
-    stat(data.issues.filter((i) => i.severity === "P0" || i.severity === "P1").length, "P0 / P1"),
-    stat(data.issues.filter((i) => (i.labels || []).includes("needs-human-review")).length, "needs-human-review"),
-    stat(data.issues.filter((i) => !i.comments.some((c) => c.author === "triage-agent")).length, "nicht getriagt"),
-    stat(comp.filter((r) => r.status === "violation").length, "Vertragsverstöße"),
-    stat(new Set(data.github.pending.map((p) => p.pr.number)).size, "offene Drift-PRs"),
-  );
+const sevOf = (i) => SEV[i.severity ?? null] ?? SEV.null;
+const runMeta = (r) => r.conclusion === "success" ? { cls: "good", icon: "check", label: "Erfolg" }
+  : r.conclusion === "failure" ? { cls: "crit", icon: "x", label: "Fehler" }
+  : { cls: "warn", icon: "clock", label: r.conclusion || r.status };
+const pill = (m, text = m.label) => el("span", { className: `pill f-${m.cls}` }, icon(m.icon, 13), text);
+const safeUrl = (u) => /^https:\/\/github\.com\//.test(u) ? u : "#";
+const ghLink = (url, text) => el("a", { href: safeUrl(url), target: "_blank", rel: "noopener", textContent: text });
+
+const p2 = (n) => String(n).padStart(2, "0");
+const hm = (d) => `${p2(d.getUTCHours())}:${p2(d.getUTCMinutes())}`;
+const dm = (d) => `${p2(d.getUTCDate())}.${p2(d.getUTCMonth() + 1)}.`;
+const fmt = (iso) => iso ? `${dm(new Date(iso))} ${hm(new Date(iso))} UTC` : "–";
+const ago = (iso) => { const m = Math.round((Date.now() - new Date(iso)) / 60000);
+  return m < 1 ? "gerade eben" : m < 60 ? `vor ${m} Min` : m < 36 * 60 ? `vor ${Math.round(m / 60)} h` : `vor ${Math.round(m / 1440)} Tagen`; };
+const until = (d) => { const m = Math.round((d - Date.now()) / 60000); return m < 60 ? `in ${m} Min` : `in ${Math.round(m / 60)} h`; };
+
+// ponytail: versteht nur tägliche Crons "M H * * *"; andere Formen zeigen keinen nächsten Lauf.
+function nextRun(cron) {
+  const m = /^(\d+) (\d+) \* \* \*$/.exec(cron || "");
+  if (!m) return null;
+  const now = new Date();
+  const t = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), +m[2], +m[1]));
+  if (t <= now) t.setUTCDate(t.getUTCDate() + 1);
+  return t;
 }
 
-function renderTabs() {
-  document.getElementById("tabs").replaceChildren(...Object.entries(TABS).map(([k, label]) =>
-    el("button", { textContent: label, role: "tab", ariaSelected: String(k === tab), onclick: () => { tab = k; render(); } })));
-}
-
+const triage = (i) => i.comments.find((c) => c.author === "triage-agent");
+const triageTitle = (i) => (triage(i)?.body.match(/\*\*Titel:\*\*\s*(.+)/) || [])[1] ?? "";
+const relatedIds = (i) => [...(triage(i)?.body ?? "").matchAll(/Verwandt:\s*(PROD-\d+)/g)].map((m) => m[1]);
 // "**Titel:** …\n**Severity:** …" aus dem Triage-Kommentar in Abschnitte zerlegen
-function triageSections(body) {
+function sections(body) {
   const parts = [...body.matchAll(/\*\*([^:*]+):\*\*\s*([\s\S]*?)(?=\n\*\*[^:*]+:\*\*|$)/g)];
   return parts.length ? parts.map((m) => [m[1], m[2].trim()]) : [["Kommentar", body]];
 }
+const pendingFor = (c) => data.github.pending.find((x) => x.source === c.source);
+const cardId = (source) => "c-" + source.replace(/\W/g, "-");
 
-function issueDetail(i) {
-  const box = el("div", {}, el("h4", { textContent: "Meldung" }), el("pre", { textContent: i.body }));
-  for (const c of i.comments) {
-    box.append(el("h4", { textContent: `${c.author} · ${fmt(c.created_at)}` }));
-    for (const [k, v] of triageSections(c.body)) {
-      box.append(el("pre", {}, el("b", { textContent: k + ": " }), v));
+// Tooltip: ergänzt nur, alle Werte stehen auch in den Detail-Tabs.
+const tip = $("tip");
+function showTip(x, y, content) {
+  tip.replaceChildren(...content.filter(Boolean));
+  tip.hidden = false;
+  tip.style.left = Math.max(8, Math.min(x + 14, innerWidth - tip.offsetWidth - 8)) + "px";
+  tip.style.top = (y + 18 + tip.offsetHeight > innerHeight ? y - tip.offsetHeight - 10 : y + 18) + "px";
+}
+function withTip(node, build) {
+  node.addEventListener("pointermove", (e) => showTip(e.clientX, e.clientY, build()));
+  node.addEventListener("pointerleave", () => { tip.hidden = true; });
+  node.addEventListener("focus", () => { const r = node.getBoundingClientRect(); showTip(r.left, r.bottom - 10, build()); });
+  node.addEventListener("blur", () => { tip.hidden = true; });
+  return node;
+}
+
+const calm = matchMedia("(prefers-reduced-motion: reduce)").matches;
+function countUp(node, n) {
+  if (calm || !n) { node.textContent = n; return; }
+  const t0 = performance.now();
+  const step = (t) => {
+    const p = Math.min(1, (t - t0) / 700);
+    node.textContent = Math.round(n * (1 - (1 - p) ** 3));
+    if (p < 1) requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+}
+
+let data, tab = "overview";
+const state = { sev: "", human: false, q: "", focus: null };
+const TABS = { overview: ["grid", "Übersicht"], issues: ["inbox", "Issues"], compliance: ["shield", "Compliance"] };
+
+function go(t, patch = {}) {
+  Object.assign(state, { sev: "", human: false, q: "", focus: null }, patch);
+  tab = t;
+  tip.hidden = true;
+  if (!patch.focus) scrollTo({ top: 0 });
+  render();
+}
+
+function renderLive() {
+  const { runs, error } = data.github;
+  const last = runs[0], next = nextRun(data.schedule);
+  $("live").replaceChildren(...(error
+    ? [el("span", { className: "dot off" }), "GitHub nicht erreichbar · nur lokaler Stand"]
+    : [el("span", { className: "dot on" }), el("b", { textContent: "Agent aktiv" }),
+       last ? el("span", {}, `· letzter Lauf ${ago(last.createdAt)} `, pill(runMeta(last))) : "· noch kein Lauf",
+       next ? el("span", { textContent: `· nächster ≈ ${hm(next)} UTC (${until(next)})` }) : null]));
+}
+
+function renderKpis() {
+  const rules = data.compliance.flatMap((c) => c.rules);
+  const drift = new Set(data.github.pending.map((p) => p.pr.number)).size;
+  const tiles = [
+    ["inbox", "info", data.issues.filter((i) => i.status === "open").length, "offene Issues", () => go("issues")],
+    ["alert", "crit", data.issues.filter((i) => i.severity === "P0" || i.severity === "P1").length, "P0 / P1", () => go("issues")],
+    ["eye", "warn", data.issues.filter((i) => (i.labels || []).includes("needs-human-review")).length, "needs-human-review", () => go("issues", { human: true })],
+    ["x", "crit", rules.filter((r) => r.status === "violation").length, "Vertragsverstöße", () => go("compliance")],
+    ["pr", drift ? "warn" : "good", drift, "offene Drift-PRs", () => go("compliance")],
+  ];
+  $("kpis").replaceChildren(...tiles.map(([ic, cls, n, label, onclick]) => {
+    const b = el("b");
+    countUp(b, n);
+    return el("button", { className: "kpi", onclick }, el("span", { className: `kpi-ic f-${cls}` }, icon(ic, 20)), el("span", {}, b, el("small", { textContent: label })));
+  }));
+}
+
+function renderTabs() {
+  $("tabs").replaceChildren(...Object.entries(TABS).map(([k, [ic, label]]) =>
+    el("button", { role: "tab", ariaSelected: String(k === tab), onclick: () => go(k) }, icon(ic, 15), label)));
+}
+
+const card = (title, ic, cls, ...body) => el("section", { className: `card ${cls}` }, el("h2", {}, icon(ic, 16), title), body);
+
+// --- Übersicht ---------------------------------------------------------------
+
+function heatmap() {
+  const rules = data.compliance[0]?.rules.map((r) => r.rule) ?? [];
+  const g = el("div", { className: "heat", style: `--cols:${rules.length}` },
+    el("span"), rules.map((r) => el("span", { className: "heat-h", textContent: SHORT[r] ?? r, title: r })), el("span"));
+  let n = 0;
+  for (const c of data.compliance) {
+    const p = pendingFor(c);
+    const shown = c.rules.map((r) => {
+      const pr = p?.rules.find((x) => x.rule === r.rule);
+      return { r, s: pr?.status ?? r.status, drift: !!pr && pr.status !== r.status };
+    });
+    g.append(el("button", { className: "heat-name", onclick: () => go("compliance", { focus: c.source }) }, icon("file", 15), c.title));
+    for (const { r, s, drift } of shown) {
+      const m = STATUS[s] ?? STATUS.review;
+      const was = STATUS[r.status] ?? STATUS.review;
+      g.append(withTip(el("button", {
+        className: `cell f-${m.cls}${drift ? " drift" : ""}`, style: `--i:${n++}`,
+        ariaLabel: `${c.title}, ${r.rule}: ${m.label}${drift ? `, offener PR #${p.pr.number} (in main: ${was.label})` : ""}`,
+        onclick: () => go("compliance", { focus: c.source }),
+      }, icon(m.icon, 16)), () => [
+        el("b", { textContent: m.label }),
+        el("div", { textContent: `${r.rule} · ${r.clause}` }),
+        el("div", { className: "muted", textContent: c.title }),
+        drift && el("div", { className: "tip-drift" }, icon("pr", 13), `main: ${was.label} → PR #${p.pr.number}: ${m.label}`),
+      ]));
     }
+    g.append(el("span", { className: "heat-sum" }, ["violation", "review", "compliant"].map((k) =>
+      el("span", {}, el("span", { className: `mini f-${STATUS[k].cls}` }, icon(STATUS[k].icon, 11)), String(shown.filter((x) => x.s === k).length)))));
   }
-  if (!i.comments.length) box.append(el("h4", { textContent: "Noch nicht getriagt" }));
-  return box;
+  const legend = el("div", { className: "legend" },
+    ["violation", "review", "compliant"].map((k) => el("span", {}, pill(STATUS[k]))),
+    el("span", {}, el("span", { className: "drift-key" }), "Drift: offener PR, noch nicht gemergt"));
+  return [el("div", { className: "scroll-x" }, g), legend];
+}
+
+function severityBar() {
+  const groups = SEV_ORDER.map((s) => ({ s, m: SEV[s], items: data.issues.filter((i) => (i.severity ?? null) === s) })).filter((x) => x.items.length);
+  const bar = el("div", { className: "sbar" }, groups.map((x) => withTip(el("button", {
+    className: `seg f-${x.m.cls}`, style: `flex-grow:${x.items.length}`, ariaLabel: `${x.m.label}: ${x.items.length} Issues`,
+    onclick: () => go("issues", { sev: String(x.s) }), textContent: x.items.length,
+  }), () => [el("b", { textContent: `${x.items.length} Issue${x.items.length > 1 ? "s" : ""}` }),
+    el("div", { textContent: `${x.m.label}: ${x.m.long}` }), el("div", { className: "muted", textContent: x.items.map((i) => i.id).join(", ") })])));
+  return [bar, el("div", { className: "legend" }, groups.map((x) => el("span", {}, pill(x.m), x.m.long)))];
+}
+
+function runStrip() {
+  const { runs, error } = data.github;
+  if (error) return el("p", { className: "muted", textContent: `GitHub nicht erreichbar (${error}).` });
+  if (!runs.length) return el("p", { className: "muted", textContent: "Noch keine Läufe." });
+  const next = nextRun(data.schedule);
+  const strip = el("div", { className: "runs" },
+    [...runs].reverse().map((r, i) => {
+      const m = runMeta(r), d = new Date(r.createdAt);
+      return withTip(el("a", { className: "run", href: safeUrl(r.url), target: "_blank", rel: "noopener", style: `--i:${i}`,
+        ariaLabel: `${fmt(r.createdAt)}, ${RUN_EVENT[r.event] ?? r.event}: ${m.label}` },
+        el("span", { className: `run-dot f-${m.cls}` }, icon(m.icon, 15)), el("b", { textContent: hm(d) }), dm(d)),
+        () => [el("b", { textContent: m.label }), el("div", { textContent: `${RUN_EVENT[r.event] ?? r.event} · ${fmt(r.createdAt)}` }),
+          el("div", { className: "muted", textContent: "Klick: Lauf und Bericht auf GitHub" })]);
+    }),
+    next && withTip(el("span", { className: "run next", tabIndex: 0 }, el("span", { className: "run-dot" }, icon("clock", 15)), el("b", { textContent: `≈ ${hm(next)}` }), "nächster"),
+      () => [el("b", { textContent: `${dm(next)} ${hm(next)} UTC` }), el("div", { textContent: "Nächster geplanter Lauf. GitHub startet geplante Läufe oft einige Minuten später." })]));
+  const table = el("table", { hidden: true },
+    el("thead", {}, el("tr", {}, ["Zeitpunkt", "Trigger", "Ergebnis", ""].map((h) => el("th", { textContent: h })))),
+    el("tbody", {}, runs.map((r) => el("tr", {}, el("td", { textContent: fmt(r.createdAt) }), el("td", { textContent: RUN_EVENT[r.event] ?? r.event }),
+      el("td", {}, pill(runMeta(r))), el("td", {}, ghLink(r.url, "Bericht"))))));
+  const toggle = el("button", { className: "link", textContent: "Als Tabelle", onclick: () => {
+    table.hidden = !table.hidden; strip.hidden = !table.hidden; toggle.textContent = table.hidden ? "Als Tabelle" : "Als Diagramm"; } });
+  return [strip, table, el("div", { className: "card-foot" },
+    el("span", { className: "muted", textContent: `letzte ${runs.length} Läufe · Zeitplan „${data.schedule ?? "–"}“ (UTC)` }), toggle)];
+}
+
+const ROW = 58, RAIL_X = 48;
+function timeline() {
+  const ev = [
+    ...data.deploys.map((d) => ({ kind: "deploy", t: d.deployed_at, key: `${d.service} ${d.version}`, d })),
+    ...data.issues.map((i) => ({ kind: "issue", t: i.opened_at, key: i.id, i })),
+  ].sort((a, b) => b.t.localeCompare(a.t));
+  const idx = new Map(ev.map((e, n) => [e.key, n]));
+
+  // Verbindungen nur aus dem Triage-Titel ("… payment-service v4.8.2") und aus "Verwandt: PROD-…".
+  // Steht dort nichts Passendes, wird keine Linie gezogen.
+  const links = [], seen = new Set();
+  const add = (a, b, kind) => { const k = [a, b].sort().join("|"); if (idx.has(a) && idx.has(b) && !seen.has(k)) { seen.add(k); links.push({ a, b, kind }); } };
+  for (const e of ev.filter((x) => x.kind === "issue")) {
+    const title = triageTitle(e.i);
+    for (const d of data.deploys) if (title.includes(`${d.service} ${d.version}`)) add(e.key, `${d.service} ${d.version}`, "deploy");
+    for (const id of relatedIds(e.i)) add(e.key, id, "rel");
+  }
+  const cause = (key) => links.filter((l) => l.kind === "deploy" && l.a === key).map((l) => l.b);
+
+  const H = ev.length * ROW, y = (key) => idx.get(key) * ROW + ROW / 2;
+  const rail = svg("svg", { class: "rail", width: 64, height: H, viewBox: `0 0 64 ${H}`, "aria-hidden": "true" },
+    svg("line", { x1: RAIL_X, y1: ROW / 2, x2: RAIL_X, y2: H - ROW / 2, class: "rail-line" }),
+    links.map((l) => {
+      const y1 = y(l.a), y2 = y(l.b), x = RAIL_X - 12, k = Math.min(32, 10 + Math.abs(y2 - y1) * 0.12);
+      return svg("path", { d: `M${x} ${y1} C${x - k} ${y1} ${x - k} ${y2} ${x} ${y2}`, class: `arc ${l.kind}`, "data-a": l.a, "data-b": l.b, pathLength: 1 });
+    }));
+
+  const wrap = el("div", { className: "tl" });
+  const focus = (key) => {
+    const near = new Set([key]);
+    for (const l of links) if (l.a === key || l.b === key) { near.add(l.a); near.add(l.b); }
+    wrap.classList.toggle("focusing", near.size > 1);
+    for (const r of wrap.querySelectorAll(".tl-row")) r.classList.toggle("hl", near.has(r.dataset.key));
+    for (const a of rail.querySelectorAll(".arc")) a.classList.toggle("hl", a.dataset.a === key || a.dataset.b === key);
+  };
+  const unfocus = () => wrap.classList.remove("focusing");
+
+  const rows = ev.map((e, n) => {
+    const d = new Date(e.t);
+    const time = el("div", { className: "tl-time" }, el("b", { textContent: dm(d) }), `${hm(d)} UTC`);
+    let node, main, onclick;
+    if (e.kind === "deploy") {
+      const x = e.d;
+      node = el("span", { className: "node f-info", title: "Deploy" }, icon("rocket", 14));
+      main = [el("div", { className: "tl-1" }, el("b", { textContent: x.service }), el("span", { textContent: x.version }), el("span", { className: "muted", textContent: x.summary })),
+        el("div", { className: "tl-2" },
+          el("span", {}, icon("user", 13), (x.deployed_by ?? "–").split("@")[0]),
+          el("span", {}, icon("rollback", 13), x.rollback_available ? `Rollback → ${x.last_known_good}` : "kein Rollback"),
+          withTip(el("span", { tabIndex: 0 }, icon("file", 13), `${(x.files_changed || []).length} Dateien`),
+            () => [el("b", { textContent: "Geänderte Dateien" }), ...(x.files_changed || []).map((f) => el("div", { textContent: f }))]))];
+    } else {
+      const i = e.i, m = sevOf(i), causes = cause(i.id);
+      node = el("span", { className: `node f-${m.cls}`, title: `Issue ${m.label}` }, icon(m.icon, 13));
+      main = [el("div", { className: "tl-1" }, el("b", { textContent: i.id }), pill(m), el("span", { textContent: i.title })),
+        el("div", { className: "tl-2" },
+          (i.labels || []).includes("needs-human-review") && el("span", {}, icon("eye", 13), "needs-human-review"),
+          causes.length ? el("span", {}, icon("link", 13), `laut Triage: ${causes.join(", ")}`) : null,
+          relatedIds(i).length ? el("span", {}, icon("link", 13), `verwandt: ${relatedIds(i).join(", ")}`) : null,
+          el("span", {}, icon("user", 13), i.assignee ?? "niemand"))];
+      onclick = () => go("issues", { q: i.id });
+    }
+    const row = el("div", { className: "tl-row", style: `--i:${n}${onclick ? "" : ";cursor:default"}`, onclick, onpointerenter: () => focus(e.key), onpointerleave: unfocus }, time, node, el("div", { className: "tl-main" }, main));
+    row.dataset.key = e.key;
+    return row;
+  });
+  wrap.append(...rows, rail);
+  const legend = el("div", { className: "legend" },
+    el("span", {}, el("span", { className: "node f-info", style: "margin:0;width:18px;height:18px" }, icon("rocket", 11)), "Deploy"),
+    el("span", {}, el("span", { className: "line-key" }), "Ursache laut Triage"),
+    el("span", {}, el("span", { className: "line-key rel" }), "verwandte Issues"),
+    el("span", { textContent: "Zeile anfahren hebt Zusammenhänge hervor, Klick auf ein Issue öffnet es." }));
+  return [wrap, legend];
+}
+
+function renderOverview() {
+  view(el("div", { className: "grid" },
+    card("Compliance-Matrix: Verträge × Regeln", "shield", "", heatmap()),
+    el("div", { className: "stack" },
+      card("Issues nach Severity", "alert", "", severityBar()),
+      card("Agent-Läufe „Compliance Drift“", "activity", "", runStrip())),
+    card("Deploys & Incidents", "rocket", "full", timeline())));
+}
+
+// --- Issues ------------------------------------------------------------------
+
+function issueCard(i, n) {
+  const m = sevOf(i), t = triage(i);
+  return el("article", { className: `icard f-${m.cls}`, style: `--i:${n}` },
+    el("header", {}, pill(m), el("b", { textContent: i.id }), el("span", { className: "grow" }), el("span", { className: "who" }, icon("user", 14), i.assignee ?? "niemand")),
+    el("h3", { textContent: i.title }),
+    el("div", {}, (i.labels || []).map((l) => el("span", { className: "chip" + (l === "needs-human-review" ? " human" : "") }, l === "needs-human-review" && icon("eye", 12), l))),
+    el("details", {}, el("summary", {}, icon("chevron", 14, "chev"), t ? "Triage-Begründung" : "Meldung"),
+      el("div", { className: "sec" }, el("h4", {}, icon("inbox", 13), "Meldung"), el("p", { textContent: i.body })),
+      t ? sections(t.body).map(([k, v]) => el("div", { className: "sec" }, el("h4", {}, icon(SEC_ICON[k] ?? "bang", 13), k), el("p", { textContent: v })))
+        : el("p", { className: "muted", textContent: "Noch nicht getriagt." })));
 }
 
 function renderIssues() {
-  const q = state.q.toLowerCase();
-  const rows = data.issues.filter((i) =>
-    (!state.sev || String(i.severity) === state.sev) &&
-    (!state.human || (i.labels || []).includes("needs-human-review")) &&
-    (!q || `${i.id} ${i.title} ${i.body}`.toLowerCase().includes(q)));
-
-  const sevSel = el("select", { onchange: (e) => { state.sev = e.target.value; render(); } },
-    ...[["", "alle Severities"], ["P0", "P0"], ["P1", "P1"], ["P2", "P2"], ["P3", "P3"], ["null", "ohne"]]
-      .map(([v, t]) => el("option", { value: v, textContent: t, selected: v === state.sev })));
-  const search = el("input", { type: "search", placeholder: "Suchen …", value: state.q,
-    oninput: (e) => { state.q = e.target.value; renderIssues();
-      const s = document.querySelector("input[type=search]"); s.focus(); s.setSelectionRange(s.value.length, s.value.length); } });
-  const human = el("input", { type: "checkbox", checked: state.human, onchange: (e) => { state.human = e.target.checked; render(); } });
-
-  const tbody = el("tbody");
-  for (const i of rows) {
-    const detail = el("tr", { className: "detail", hidden: true }, el("td", { colSpan: 5 }, issueDetail(i)));
-    tbody.append(
-      el("tr", { className: "row", onclick: () => { detail.hidden = !detail.hidden; } },
-        el("td", { textContent: i.id }),
-        el("td", {}, badge(i.severity ?? "–", i.severity ?? "none")),
-        el("td", { textContent: i.title }),
-        el("td", {}, (i.labels || []).map((l) => el("span", { className: "chip" + (l === "needs-human-review" ? " human" : ""), textContent: l }))),
-        el("td", { textContent: i.assignee ?? "–", className: i.assignee ? "" : "muted" })),
-      detail);
-  }
-  view(el("div", { className: "filters" }, sevSel, search, el("label", {}, human, " nur needs-human-review")),
-    rows.length ? el("table", {}, el("thead", {}, el("tr", {}, ...["ID", "Severity", "Titel", "Labels", "Assignee"].map((h) => el("th", { textContent: h })))), tbody)
-      : el("div", { className: "empty", textContent: "Keine Issues für diesen Filter." }));
+  const list = el("div", { className: "cards" });
+  const draw = () => {
+    const q = state.q.toLowerCase();
+    const rows = data.issues.filter((i) =>
+      (!state.sev || String(i.severity ?? null) === state.sev) &&
+      (!state.human || (i.labels || []).includes("needs-human-review")) &&
+      (!q || `${i.id} ${i.title} ${i.body}`.toLowerCase().includes(q)))
+      .sort((a, b) => SEV_ORDER.indexOf(a.severity ?? null) - SEV_ORDER.indexOf(b.severity ?? null));
+    list.replaceChildren(...(rows.length ? rows.map(issueCard) : [el("div", { className: "empty", textContent: "Keine Issues für diesen Filter." })]));
+  };
+  const opts = [["", "Alle", null, data.issues.length],
+    ...SEV_ORDER.map((s) => [String(s), SEV[s].label, SEV[s], data.issues.filter((i) => (i.severity ?? null) === s).length]).filter((o) => o[3])];
+  const chips = opts.map(([v, label, m, count]) => el("button", { className: "chipbtn", ariaPressed: String(state.sev === v),
+    onclick: () => { state.sev = v; chips.forEach((c, k) => { c.ariaPressed = String(opts[k][0] === v); }); draw(); } },
+    m && el("span", { className: `sw f-${m.cls}` }), label, el("span", { className: "muted", textContent: count })));
+  const human = el("button", { className: "chipbtn", ariaPressed: String(state.human),
+    onclick: () => { state.human = !state.human; human.ariaPressed = String(state.human); draw(); } }, icon("eye", 14), "needs-human-review");
+  const search = el("label", { className: "search" }, icon("search", 14),
+    el("input", { type: "search", placeholder: "Suchen …", value: state.q, ariaLabel: "Issues durchsuchen", oninput: (e) => { state.q = e.target.value; draw(); } }));
+  view(el("div", { className: "filters" }, chips, human, search), list);
+  draw();
 }
 
-function renderDeploys() {
-  const tbody = el("tbody", {}, data.deploys.map((d) => el("tr", {},
-    el("td", { textContent: fmt(d.deployed_at) }),
-    el("td", {}, el("b", { textContent: d.service }), " ", d.version),
-    el("td", { textContent: d.summary }),
-    el("td", { textContent: (d.files_changed || []).join(", "), className: "muted" }),
-    el("td", {}, d.rollback_available ? `zurück auf ${d.last_known_good}` : el("span", { className: "muted", textContent: "kein Rollback" })))));
-  view(el("table", {}, el("thead", {}, el("tr", {}, ...["Zeitpunkt", "Service", "Zusammenfassung", "Dateien", "Rollback"].map((h) => el("th", { textContent: h })))), tbody));
-}
+// --- Compliance --------------------------------------------------------------
 
-const ghLink = (url, text) => el("a", { href: /^https:\/\/github\.com\//.test(url) ? url : "#", target: "_blank", rel: "noopener", textContent: text });
-const RUN_EVENT = { schedule: "geplant", workflow_dispatch: "manuell" };
-const RUN_CLASS = { success: "compliant", failure: "violation" };
-
-function findingDetails(f, prefix) {
-  return el("details", {},
-    el("summary", {}, badge(f.fields.severity ?? "–"), " ", prefix ?? "", f.title),
+function findingDetails(f, tag) {
+  const m = FSEV[f.fields.severity] ?? { cls: "none", icon: "bang", label: f.fields.severity ?? "–" };
+  return el("details", { className: "fd" },
+    el("summary", {}, icon("chevron", 14, "chev"), pill(m), tag && el("span", { className: "tag", textContent: tag }), f.title),
     el("dl", {}, Object.entries(f.fields).filter(([k]) => k !== "severity").flatMap(([k, v]) =>
       [el("dt", { textContent: k }), el("dd", { textContent: v.replace(/`/g, "") })])));
 }
 
-function renderRuns() {
-  const { runs, error } = data.github;
-  return el("div", { className: "card" },
-    el("h3", { textContent: "Workflow „Compliance Drift“" }),
-    error ? el("div", { className: "muted", textContent: `GitHub nicht erreichbar (${error}). Angezeigt wird nur der lokale Stand.` })
-      : runs.length ? el("table", {}, el("tbody", {}, runs.map((r) => el("tr", {},
-          el("td", { textContent: fmt(r.createdAt) }),
-          el("td", { textContent: RUN_EVENT[r.event] ?? r.event }),
-          el("td", {}, badge(r.conclusion || r.status, RUN_CLASS[r.conclusion] ?? "review")),
-          el("td", {}, ghLink(r.url, "Lauf & Bericht öffnen"))))))
-      : el("div", { className: "muted", textContent: "Noch keine Läufe." }));
-}
-
 function renderCompliance() {
-  view(renderRuns(), ...data.compliance.map((c) => {
-    // Offener Drift-PR für diesen Vertrag: vom Workflow gefunden, aber noch nicht in main.
-    const p = data.github.pending.find((x) => x.source === c.source);
-    const pStatus = (rule) => p?.rules.find((r) => r.rule === rule)?.status;
+  view(...data.compliance.map((c, n) => {
+    const p = pendingFor(c);
+    const prStatus = (rule) => p?.rules.find((r) => r.rule === rule)?.status;
     const known = new Set(c.findings.map((f) => f.title));
-    return el("div", { className: "card" },
-      el("h3", { textContent: c.title }),
-      el("div", { className: "muted", textContent: `${c.source} · ${c.result}` }),
-      p ? el("div", {}, badge("Drift", "review"), " ", ghLink(p.pr.url, `PR #${p.pr.number}`),
-        ` noch nicht gemergt: ${p.result}`) : null,
-      el("table", {},
-        p ? el("thead", {}, el("tr", {}, ...["Regel", "main", `PR #${p.pr.number}`, "Klausel"].map((h) => el("th", { textContent: h })))) : null,
-        el("tbody", {}, c.rules.map((r) => el("tr", {},
-          el("td", { textContent: r.rule }), el("td", {}, badge(r.status)),
-          p ? el("td", {}, pStatus(r.rule) === r.status ? el("span", { className: "muted", textContent: "unverändert" }) : badge(pStatus(r.rule) ?? "–")) : null,
-          el("td", { textContent: r.clause, className: "muted" }))))),
+    const count = (s) => c.rules.filter((r) => r.status === s).length;
+    return el("section", { className: "card ccard", id: cardId(c.source), style: `--i:${n}` },
+      el("div", { className: "ccard-h" }, el("span", { className: "kpi-ic f-info" }, icon("file", 20)),
+        el("div", { className: "grow" }, el("h2", { textContent: c.title }), el("div", { className: "muted", textContent: c.source })),
+        el("div", { className: "counts" }, ["violation", "review", "compliant"].map((s) => pill(STATUS[s], `${count(s)} ${STATUS[s].label}`)))),
+      p && el("div", { className: "drift-banner" }, icon("pr", 16),
+        el("span", {}, el("b", { textContent: "Drift erkannt" }), " · ", ghLink(p.pr.url, `PR #${p.pr.number}`), ` noch nicht gemergt: ${p.result}`)),
+      el("ul", { className: "rules" }, c.rules.map((r) => {
+        const ps = prStatus(r.rule), drift = p && ps && ps !== r.status;
+        return el("li", { className: drift ? "drift" : "" }, pill(STATUS[r.status] ?? STATUS.review),
+          drift && [el("span", { textContent: "→" }), pill(STATUS[ps] ?? STATUS.review), el("small", { className: "muted", textContent: `PR #${p.pr.number}` })],
+          el("span", { className: "grow", textContent: r.rule }), el("span", { className: "muted", textContent: r.clause }));
+      })),
       c.findings.map((f) => findingDetails(f)),
-      p ? p.findings.filter((f) => !known.has(f.title)).map((f) => findingDetails(f, `neu in PR #${p.pr.number}: `)) : null);
+      p && p.findings.filter((f) => !known.has(f.title)).map((f) => findingDetails(f, `neu in PR #${p.pr.number}`)));
   }));
+  if (state.focus) {
+    const target = $(cardId(state.focus));
+    state.focus = null;
+    target?.scrollIntoView({ behavior: calm ? "auto" : "smooth", block: "start" });
+    target?.classList.add("flash");
+  }
 }
 
-function view(...nodes) { document.getElementById("view").replaceChildren(...nodes); }
+// --- Rahmen ------------------------------------------------------------------
 
+function view(...nodes) { $("view").replaceChildren(...nodes); }
 function render() {
   renderTabs();
-  ({ issues: renderIssues, deploys: renderDeploys, compliance: renderCompliance })[tab]();
+  ({ overview: renderOverview, issues: renderIssues, compliance: renderCompliance })[tab]();
 }
 
-fetch("/data.json").then((r) => r.json()).then((d) => {
-  data = d;
-  document.getElementById("meta").textContent = `Stand ${fmt(d.generated_at)} · liest issues/, deploys/ und compliance-findings/ aus dem Repo, Workflow-Läufe und Drift-PRs von GitHub`;
-  renderStats();
-  render();
-}).catch((e) => { document.getElementById("meta").textContent = "Fehler beim Laden: " + e; });
+// Lädt jede Minute neu; gezeichnet wird nur, wenn sich die Daten geändert haben (offene Details bleiben offen).
+let lastKey = "";
+async function load() {
+  try {
+    const d = await fetch("/data.json").then((r) => r.json());
+    const key = JSON.stringify({ ...d, generated_at: 0 });
+    data = d;
+    renderLive();
+    $("meta").textContent = `Stand ${fmt(d.generated_at)} · liest issues/, deploys/ und compliance-findings/ aus dem Repo, Workflow-Läufe und Drift-PRs von GitHub · aktualisiert sich jede Minute`;
+    if (key !== lastKey) { lastKey = key; renderKpis(); render(); }
+  } catch (e) {
+    $("meta").textContent = "Fehler beim Laden: " + e;
+  }
+}
+$("logo").append(icon("activity", 20));
+load();
+setInterval(load, 60000);
 </script>
 </body>
 </html>
