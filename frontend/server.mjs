@@ -1,10 +1,13 @@
 // Lokaler Dev-Server für das Ops-Dashboard. Keine Abhängigkeiten.
 // Start: node frontend/server.mjs [port]   (Standard 8080)
-// Liest issues/, deploys/ und compliance-findings/ bei jedem Aufruf von /data.json frisch ein.
+// Liest issues/, deploys/ und compliance-findings/ bei jedem Aufruf von /data.json frisch ein,
+// dazu per `gh` die letzten Compliance-Drift-Läufe und offene Drift-PRs.
 import { createServer } from "node:http";
 import { readFile, readdir } from "node:fs/promises";
-import { join, dirname } from "node:path";
+import { join, dirname, basename } from "node:path";
 import { fileURLToPath } from "node:url";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const port = Number(process.argv[2] || process.env.PORT || 8080);
@@ -51,9 +54,32 @@ async function loadCompliance() {
   return Promise.all(files.map(async (f) => parseFinding(await readFile(join(dir, f), "utf8"))));
 }
 
+// GitHub-Stand über das lokal angemeldete `gh`: letzte Workflow-Läufe und offene, noch nicht gemergte Compliance-PRs.
+const gh = async (...args) => (await promisify(execFile)("gh", args, { cwd: root, timeout: 15000 })).stdout;
+
+async function loadGitHub() {
+  try {
+    const runs = JSON.parse(await gh("run", "list", "--workflow", "Compliance Drift", "-L", "5",
+      "--json", "databaseId,event,status,conclusion,createdAt,url"));
+    const prs = JSON.parse(await gh("pr", "list", "--state", "open", "--json", "number,title,url,headRefName,files"));
+    const pending = [];
+    for (const pr of prs.filter((p) => p.headRefName.startsWith("claude/compliance-"))) {
+      for (const { path } of pr.files.filter((f) => /^compliance-findings\/[\w.-]+\.md$/.test(f.path))) {
+        const md = await gh("api", "-H", "Accept: application/vnd.github.raw",
+          `repos/{owner}/{repo}/contents/${path}?ref=${encodeURIComponent(pr.headRefName)}`);
+        pending.push({ pr: { number: pr.number, url: pr.url }, file: basename(path), ...parseFinding(md) });
+      }
+    }
+    return { runs, pending, error: null };
+  } catch (err) {
+    // Ohne gh/Netz läuft das Dashboard mit den lokalen Dateien weiter.
+    return { runs: [], pending: [], error: String(err.message || err).split("\n")[0] };
+  }
+}
+
 async function loadData() {
-  const [issues, deploys, compliance] = await Promise.all([loadIssues(), loadDeploys(), loadCompliance()]);
-  return { generated_at: new Date().toISOString(), issues, deploys, compliance };
+  const [issues, deploys, compliance, github] = await Promise.all([loadIssues(), loadDeploys(), loadCompliance(), loadGitHub()]);
+  return { generated_at: new Date().toISOString(), issues, deploys, compliance, github };
 }
 
 createServer(async (req, res) => {
