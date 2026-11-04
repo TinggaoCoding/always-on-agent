@@ -35,3 +35,5 @@ jobs:
           github_token: ${{ github.token }}
           prompt: "Follow prompts/compliance.md in this repository exactly. Read it first, then do what it says."
           claude_args: '--allowedTools "Read,Write,Edit,Glob,Grep,Bash(git:*),Bash(gh:*),Bash(date:*)"'
+          # Report in the run's Summary tab. Safe here: input is only this repo's own files.
+          display_report: true
