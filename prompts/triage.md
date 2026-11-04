@@ -26,20 +26,22 @@ Entscheide vor jeder Bewertung für jedes Issue einzeln:
 - **Alle übersprungen:** keine Datei ändern, keinen Branch anlegen, keinen PR öffnen. Nur die Abschlusstabelle ausgeben.
 
 ## Regeln
-1. **Severity** als String. Der Severity-Guide in `runbooks/payment-service-degraded.md` kennt nur `"P0"` (alle Kunden), `"P1"` (ein Tenant) und `"P3"` (einzelner User). Auslegung: `"P0"` auch bei Ausfall in mehreren Regionen mit starkem Anstieg von Latenz und Fehlerrate (PROD-4521). `"P2"` steht nicht im Guide: vergib es nur für wiederkehrende, selbstheilende Teilstörungen ohne Datenverlust (PROD-4498) und schreibe unter "Unsicherheiten", dass P2 eine Annahme ist. Kein Incident oder menschliche Entscheidung nötig: `severity` bleibt `null`.
+1. **Severity** als String. Der Severity-Guide in `runbooks/payment-service-degraded.md` kennt nur `"P0"` (alle Kunden), `"P1"` (ein Tenant) und `"P3"` (einzelner User). Passt keine Stufe genau, wähle die nächstliegende und schreibe unter "Unsicherheiten", dass das eine Annahme ist. Richtwerte: `"P0"`, wenn ein Kernpfad der Kunden breit ausfällt (mehrere Regionen oder alle Kunden); `"P1"`, wenn ein einzelner Tenant betroffen ist; `"P2"` (steht nicht im Guide), wenn eine Teilstörung wiederkehrt oder sich selbst heilt und kein Datenverlust belegt ist; `"P3"` bei einem einzelnen User. Kein Incident (z. B. Feature-Request) oder menschliche Entscheidung nötig: `severity` bleibt `null`.
 2. **Labels:** Jedes bearbeitete Issue bekommt `triage` (nur, wenn noch nicht vorhanden). Wenn ein Mensch entscheiden muss (z. B. weil der Runbook-Fix einer bewussten Änderung widerspricht), kommt zusätzlich `needs-human-review` dazu. Weitere Labels vergibst du nicht.
-3. **Assignee:** `"payments-oncall"` bei P0 im Payment-/Checkout-Pfad (Runbook: "page #payments-oncall"). Bei P1 im Payment-/Checkout-Pfad ebenfalls, aber als Annahme: das Runbook sagt dort nur "page CSM and on-call", ohne Teamnamen; vermerke das unter "Unsicherheiten". Sonst `null`.
+3. **Assignee:** Nur setzen, wenn das passende Runbook ein Team oder einen Kanal nennt (z. B. "page #team"), dann ohne das `#`. Nennt das Runbook für die Stufe nur eine Rolle ohne Teamnamen, ist das Übertragen eines Teams eine Annahme: vermerke sie unter "Unsicherheiten". Sonst `null`.
 4. **Deploy-Korrelation:** Ein Deploy kommt nur als Ursache in Frage, wenn `deployed_at` VOR dem Beginn des Problems liegt. Den Beginn liest du aus `opened_at` und den Zeitangaben im `body` ab. Prüfe außerdem, ob `files_changed` und `summary` zum Symptom passen.
 5. **Rollback** empfiehlst du nur bei `rollback_available: true`, mit Angabe von `last_known_good`.
 6. **Runbook-Fixes** übernimmst du nicht blind. Steht ein Fix im Widerspruch zu einem Deploy, der bewusst gemacht wurde (z. B. laut `summary` für einen Security-Review), wird nicht automatisch gefixt: Label `needs-human-review`, den Konflikt beschreiben.
-7. **Verwandte Issues** verlinkst du gegenseitig im Kommentar (`Verwandt: PROD-xxxx`), außer das Partner-Issue ist bereits getriagt (siehe Vorab-Prüfung): dann steht der Verweis nur im neuen Kommentar.
+7. **Verwandte Issues** (gleicher Service, gleicher Codepfad oder gleiches Feature) verlinkst du gegenseitig im Kommentar (`Verwandt: PROD-xxxx`), außer das Partner-Issue ist bereits getriagt (siehe Vorab-Prüfung): dann steht der Verweis nur im neuen Kommentar.
 
-## Bekannte Fallen
-- PROD-4521: Der Stack-Trace zeigt `PaymentService.java:142`. Das ist der bekannte NPE aus dem Guest-Checkout-Flow (Runbook Punkt 4). Kurz vorher lief der Deploy payment-service v4.8.2. Nicht auf den Connection-Pool-Fix ausweichen. Den Stripe-Status kannst du nicht prüfen, das gehört unter Unsicherheiten.
-- PROD-4487 (Acme Corp, ein Tenant) hängt mit PROD-4521 zusammen: tenant-config-service v3.2.1 hat das Flag `guest-checkout` für Cohort B inkl. Acme Corp eingeschaltet. Beide Issues gegenseitig verlinken, soweit nicht übersprungen. Dass es derselbe NPE ist, ist sehr wahrscheinlich, aber nicht belegt (PROD-4487 enthält keinen Stack-Trace, nur Spinner und Zeitfolge): schreibe das unter "Unsicherheiten". frontend v12.4.1 (nur `src/pages/pricing.tsx`) ist nicht die Ursache.
-- PROD-4498: auth-service v6.0.0 (Redis) wurde NACH Beginn des Problems deployt und ist nicht die Ursache. Außerdem gilt `rollback_available: false`. Folge dem Runbook `auth-502-windows`: erst `db_pool_idle` prüfen, dann `DB_POOL_SIZE` 30 → 60. Keine Pods skalieren, den LB-Timeout nicht anheben.
-- PROD-4519: signing-service v2.1.4 hat die URL-TTL bewusst für einen Security-Review gesenkt. Der Runbook-Fix (`URL_TTL_SECONDS` auf 3600, laut Runbook zuvor per PR #4189 auf 300 gesenkt) widerspricht dem. Unsicherheit: Das Issue sagt "2 days ago", der Deploy war am 17.05. und damit eventuell nach Beginn der Symptome; der Zusammenhang ist plausibel, aber nicht gesichert. Das ändert nichts am Ergebnis `needs-human-review`. NICHT automatisch fixen: `needs-human-review`, `severity` bleibt `null`.
-- PROD-4506 ist ein Feature-Request und kein Incident: kein Runbook, Backlog, keine Eskalation, `severity` bleibt `null`.
+## Allgemeine Fallen
+- Passt die Fehlerstelle im Stack-Trace oder Symptom auf einen konkreten Eintrag im Runbook, hat dieser Vorrang vor allgemeineren Runbook-Schritten. Einen allgemeinen Fix (z. B. Ressourcen erhöhen) empfiehlst du nur mit Beleg, dass das Symptom dazu passt.
+- Nicht jede Ursache ist ein Code-Deploy: Auch ein Eintrag im Deploy-Log, der nur eine Konfiguration oder ein Feature-Flag für bestimmte Tenants oder Gruppen schaltet, kann das Problem auslösen. Prüfe `summary` und `files_changed` gegen das Symptom und schließe Deploys aus, die zeitlich oder inhaltlich nicht passen. Nenne ausgeschlossene Kandidaten mit Grund.
+- Hat ein Issue keinen eigenen Beleg (z. B. keinen Stack-Trace), sondern nur Zeitfolge und passendes Symptom, ist ein Zusammenhang mit einem anderen Issue eine Vermutung: verlinke, aber schreibe ihn unter "Unsicherheiten".
+- "Nicht"-Hinweise im Runbook (z. B. was keinesfalls getan werden soll) sind bindend und stehen in der empfohlenen Maßnahme.
+- Zeitangaben im Issue-Text ("vor 2 Tagen", "seit 07:25") gleichst du mit `deployed_at` ab. Widersprechen sie einem naheliegenden Deploy oder lassen sie die Reihenfolge offen, schreibe das unter "Unsicherheiten".
+- Externe Systeme, die du nicht prüfen kannst (z. B. Status-Seiten von Anbietern), gehören unter "Unsicherheiten".
+- Ist ein Issue ein Feature-Request oder beschreibt keine Störung: kein Incident, kein Runbook, keine Eskalation, Backlog-Empfehlung, `severity` bleibt `null`.
 
 ## Ausgabeformat je Befund
 An `comments` des Issues hängst du genau ein Objekt an:
@@ -48,7 +50,7 @@ An `comments` des Issues hängst du genau ein Objekt an:
 {
   "author": "triage-agent",
   "created_at": "<aktueller Zeitpunkt, ISO-8601 UTC>",
-  "body": "**Titel:** ...\n**Severity:** ...\n**Beleg:** <Datei/Stelle, z. B. deploys/recent.json payment-service v4.8.2 deployed_at; runbooks/payment-service-degraded.md Punkt 4>\n**Empfohlene Maßnahme:** ...\n**Unsicherheiten:** ..."
+  "body": "**Titel:** ...\n**Severity:** ...\n**Beleg:** <Datei/Stelle, z. B. deploys/recent.json <service> <version> deployed_at; runbooks/<name>.md Punkt <n>>\n**Empfohlene Maßnahme:** ...\n**Unsicherheiten:** ..."
 }
 ```
 
