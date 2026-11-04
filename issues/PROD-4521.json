@@ -2,11 +2,17 @@
   "id": "PROD-4521",
   "title": "NullPointerException in PaymentService at checkout",
   "status": "open",
-  "severity": null,
-  "labels": [],
-  "assignee": null,
+  "severity": "P0",
+  "labels": ["triage"],
+  "assignee": "payments-oncall",
   "opened_at": "2026-05-19T14:18:23Z",
   "reporter": "monitoring-alerts@bts-synthetic.example",
   "body": "p99 latency on /checkout has jumped from 800ms to 8.2s over the last 14 minutes. Error rate is up 340%. Stack trace from sampled requests:\n\njava.lang.NullPointerException\n  at com.bts.payments.PaymentService.processCharge(PaymentService.java:142)\n  at com.bts.payments.PaymentController.charge(PaymentController.java:67)\n  at sun.reflect.NativeMethodAccessorImpl.invoke0(Native Method)\n\nAffected: ~2,400 active checkouts. Region: us-east-1, eu-west-2.",
-  "comments": []
+  "comments": [
+    {
+      "author": "triage-agent",
+      "created_at": "2026-11-04T13:54:37Z",
+      "body": "**Titel:** Checkout-Ausfall durch bekannten Guest-Checkout-NPE (PaymentService.java:142) nach Deploy payment-service v4.8.2\n**Severity:** P0 (Ausfall in mehreren Regionen us-east-1 und eu-west-2, p99 800ms → 8.2s, Fehlerrate +340%, ~2.400 aktive Checkouts)\n**Beleg:** issues/PROD-4521.json body: Stack-Trace `PaymentService.processCharge(PaymentService.java:142)`, Beginn ca. 14:04 UTC (opened_at 14:18:23Z minus \"last 14 minutes\"); deploys/recent.json payment-service v4.8.2 deployed_at 2026-05-19T14:04:11Z (vor Problembeginn), summary \"Add guest checkout support\", files_changed PaymentService.java, PaymentController.java, CheckoutRequest.java (passt zu beiden Frames im Stack-Trace), rollback_available true, last_known_good v4.8.1; runbooks/payment-service-degraded.md Punkt 1 (Deploy-Regression) und Punkt 4 (bekannter NPE: `customer.savedPaymentMethod` ist im Guest-Checkout-Flow null), Severity-Guide \"P0, page #payments-oncall immediately\".\n**Empfohlene Maßnahme:** #payments-oncall sofort pagen. Rollback von payment-service auf last_known_good v4.8.1 (rollback_available: true). Danach den Hotfix aus Runbook Punkt 4 umsetzen: Null-Check in Zeile 142, Fallback auf `paymentMethodToken` aus dem Request. Den Connection-Pool-Fix (Punkt 3, `db.pool.max`) nicht anwenden, der Stack-Trace zeigt einen NPE und keine Pool-Erschöpfung. Verwandt: PROD-4487\n**Unsicherheiten:** Den Stripe-Status (Runbook Punkt 2, status.stripe.com) kann ich nicht prüfen, ein paralleler Stripe-Ausfall ist nicht ausgeschlossen. Der Guide nennt P0 für \"alle Kunden\"; ob wirklich alle Kunden betroffen sind, steht nicht im Issue. P0 folgt hier aus dem Ausfall in mehreren Regionen mit starkem Anstieg von Latenz und Fehlerrate. Der Problembeginn ist aus \"last 14 minutes\" geschätzt; er liegt nur wenige Sekunden nach dem Deploy."
+    }
+  ]
 }

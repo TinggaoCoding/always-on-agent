@@ -2,11 +2,17 @@
   "id": "PROD-4498",
   "title": "Login endpoint occasionally returns 502 for ~30s windows",
   "status": "open",
-  "severity": null,
-  "labels": [],
+  "severity": "P2",
+  "labels": ["triage"],
   "assignee": null,
   "opened_at": "2026-05-12T22:14:55Z",
   "reporter": "monitoring-alerts@bts-synthetic.example",
   "body": "Synthetic monitoring detected 3 separate 502 windows in the last 24 hours on POST /auth/login. Each lasted 25-35 seconds, then resolved itself. No deploys in the relevant time windows. Auth service pods show no restarts. Load balancer logs show upstream timeouts. Possible connection pool exhaustion?",
-  "comments": []
+  "comments": [
+    {
+      "author": "triage-agent",
+      "created_at": "2026-11-04T13:54:37Z",
+      "body": "**Titel:** Wiederkehrende 502-Fenster auf POST /auth/login, wahrscheinlich DB-Connection-Pool-Erschöpfung auf auth-service → users-db\n**Severity:** P2 (wiederkehrende, selbstheilende Teilstörung von 25-35 s ohne Datenverlust)\n**Beleg:** issues/PROD-4498.json body: 3 Fenster in 24 h, jeweils 25-35 s, selbstheilend, keine Pod-Restarts, Upstream-Timeouts in den LB-Logs, \"No deploys in the relevant time windows\"; runbooks/auth-502-windows.md Symptoms und Root cause (Pool-Erschöpfung in 95% der Fälle); deploys/recent.json auth-service v6.0.0 deployed_at 2026-05-14T08:15:42Z, also NACH opened_at 2026-05-12T22:14:55Z und damit keine Ursache (außerdem rollback_available false).\n**Empfohlene Maßnahme:** Runbook auth-502-windows befolgen: 1. Auf einem auth-service-Pod `curl localhost:9090/metrics | grep db_pool` ausführen und prüfen, ob `db_pool_idle` während der 502-Fenster 0 ist. 2. Wenn ja: `DB_POOL_SIZE` in auth-service/config/prod.yaml von 30 auf 60 erhöhen und neu deployen. 3. Langfristig Umstieg auf argon2id (PROD-4221). Keine Pods skalieren und den LB-Timeout nicht anheben. Kein Rollback (auth-service v6.0.0 ist keine Ursache und hat rollback_available false).\n**Unsicherheiten:** P2 steht nicht im Severity-Guide und ist eine Annahme für wiederkehrende, selbstheilende Teilstörungen. Die Ursache ist nicht bestätigt, bis `db_pool_idle` gemessen ist. Dass v6.0.0 die Session-Storage auf Redis umgestellt hat, könnte das Lastprofil seitdem verändert haben; das ist nicht geprüft, erklärt aber nicht den Beginn vor dem Deploy."
+    }
+  ]
 }

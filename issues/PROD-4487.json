@@ -2,11 +2,17 @@
   "id": "PROD-4487",
   "title": "Customer 'cannot complete checkout' (Acme Corp, 2400 users)",
   "status": "open",
-  "severity": null,
-  "labels": ["customer-impact"],
-  "assignee": null,
+  "severity": "P1",
+  "labels": ["customer-impact", "triage"],
+  "assignee": "payments-oncall",
   "opened_at": "2026-05-20T07:33:09Z",
   "reporter": "customer-success@bts-synthetic.example",
   "body": "Enterprise customer Acme Corp (2,400 seats) reporting that none of their users can complete checkout as of 07:25 UTC. They've sent screenshots showing a spinner that never resolves on the payment confirmation step. Other customers do not appear affected — this looks tenant-specific. Acme's CTO is on a call with our CSM in 25 minutes.",
-  "comments": []
+  "comments": [
+    {
+      "author": "triage-agent",
+      "created_at": "2026-11-04T13:54:37Z",
+      "body": "**Titel:** Checkout bei Acme Corp blockiert, nachdem das Flag 'guest-checkout' für Cohort B eingeschaltet wurde (tenant-config-service v3.2.1)\n**Severity:** P1 (ein Tenant betroffen: Acme Corp, 2.400 Seats)\n**Beleg:** issues/PROD-4487.json body: Beginn 07:25 UTC, Spinner auf dem Payment-Confirmation-Schritt, \"looks tenant-specific\"; deploys/recent.json tenant-config-service v3.2.1 deployed_at 2026-05-20T07:12:08Z (13 Minuten vor Problembeginn), summary \"Enable feature flag 'guest-checkout' for cohort B (Acme Corp included)\", files_changed feature-flags/cohort-b.yaml, rollback_available true, last_known_good v3.2.0; deploys/recent.json payment-service v4.8.2 (\"Add guest checkout support\"); runbooks/payment-service-degraded.md Punkt 4 (NPE im Guest-Checkout-Flow) und Severity-Guide \"One tenant affected → P1, page CSM and on-call\". Ausgeschlossen: frontend v12.4.1 (deployed_at 06:50:33Z, zwar vorher, aber files_changed nur src/pages/pricing.tsx, passt nicht zum Payment-Schritt).\n**Empfohlene Maßnahme:** CSM und payments-oncall pagen (CTO-Call mit dem CSM steht an). Rollback von tenant-config-service auf last_known_good v3.2.0 (rollback_available: true), damit 'guest-checkout' für Cohort B wieder aus ist. Den dauerhaften Fix über PROD-4521 umsetzen (Null-Check in PaymentService.java:142 oder Rollback payment-service auf v4.8.1). Verwandt: PROD-4521\n**Unsicherheiten:** Dass es derselbe NPE wie in PROD-4521 ist, ist sehr wahrscheinlich, aber nicht belegt: Das Issue enthält keinen Stack-Trace, nur Spinner und Zeitfolge. Vor dem Rollback Logs für den Tenant Acme Corp auf PaymentService.java:142 prüfen. Der Assignee \"payments-oncall\" ist eine Annahme: Das Runbook sagt für P1 nur \"page CSM and on-call\", ohne Teamnamen. Ob ein Rollback von v3.2.0 auch andere Tenants aus Cohort B betrifft, ist nicht geprüft."
+    }
+  ]
 }
