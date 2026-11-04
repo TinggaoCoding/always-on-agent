@@ -8,7 +8,7 @@
 Globex will provide SMS and email APIs as described in the Order Form.
 
 ## 2. Data Processing
-All customer data will be processed exclusively within the European Economic Area (EEA). Globex will not transfer customer data outside the EEA without the customer's prior written consent.
+Customer data will be processed in the European Economic Area (EEA) and in Globex's data centres in the United States. Globex may transfer customer data between these regions for operational reasons.
 
 ## 3. Audit Rights
 The customer may request an audit of Globex's security controls on 30 days' written notice, not more than twice per calendar year.
