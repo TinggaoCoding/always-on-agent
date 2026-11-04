@@ -91,6 +91,7 @@ function renderStats() {
     stat(data.issues.filter((i) => (i.labels || []).includes("needs-human-review")).length, "needs-human-review"),
     stat(data.issues.filter((i) => !i.comments.some((c) => c.author === "triage-agent")).length, "nicht getriagt"),
     stat(comp.filter((r) => r.status === "violation").length, "Vertragsverstöße"),
+    stat(new Set(data.github.pending.map((p) => p.pr.number)).size, "offene Drift-PRs"),
   );
 }
 
@@ -159,17 +160,50 @@ function renderDeploys() {
   view(el("table", {}, el("thead", {}, el("tr", {}, ...["Zeitpunkt", "Service", "Zusammenfassung", "Dateien", "Rollback"].map((h) => el("th", { textContent: h })))), tbody));
 }
 
+const ghLink = (url, text) => el("a", { href: /^https:\/\/github\.com\//.test(url) ? url : "#", target: "_blank", rel: "noopener", textContent: text });
+const RUN_EVENT = { schedule: "geplant", workflow_dispatch: "manuell" };
+const RUN_CLASS = { success: "compliant", failure: "violation" };
+
+function findingDetails(f, prefix) {
+  return el("details", {},
+    el("summary", {}, badge(f.fields.severity ?? "–"), " ", prefix ?? "", f.title),
+    el("dl", {}, Object.entries(f.fields).filter(([k]) => k !== "severity").flatMap(([k, v]) =>
+      [el("dt", { textContent: k }), el("dd", { textContent: v.replace(/`/g, "") })])));
+}
+
+function renderRuns() {
+  const { runs, error } = data.github;
+  return el("div", { className: "card" },
+    el("h3", { textContent: "Workflow „Compliance Drift“" }),
+    error ? el("div", { className: "muted", textContent: `GitHub nicht erreichbar (${error}). Angezeigt wird nur der lokale Stand.` })
+      : runs.length ? el("table", {}, el("tbody", {}, runs.map((r) => el("tr", {},
+          el("td", { textContent: fmt(r.createdAt) }),
+          el("td", { textContent: RUN_EVENT[r.event] ?? r.event }),
+          el("td", {}, badge(r.conclusion || r.status, RUN_CLASS[r.conclusion] ?? "review")),
+          el("td", {}, ghLink(r.url, "Lauf & Bericht öffnen"))))))
+      : el("div", { className: "muted", textContent: "Noch keine Läufe." }));
+}
+
 function renderCompliance() {
-  view(...data.compliance.map((c) => el("div", { className: "card" },
-    el("h3", { textContent: c.title }),
-    el("div", { className: "muted", textContent: `${c.source} · ${c.result}` }),
-    el("table", {}, el("tbody", {}, c.rules.map((r) => el("tr", {},
-      el("td", { textContent: r.rule }), el("td", {}, badge(r.status)), el("td", { textContent: r.clause, className: "muted" }))))),
-    c.findings.map((f) => el("details", {},
-      el("summary", {}, badge(f.fields.severity ?? "–"), " ", f.title),
-      el("dl", {}, Object.entries(f.fields).filter(([k]) => k !== "severity").flatMap(([k, v]) =>
-        [el("dt", { textContent: k }), el("dd", { textContent: v.replace(/`/g, "") })]))))
-  )));
+  view(renderRuns(), ...data.compliance.map((c) => {
+    // Offener Drift-PR für diesen Vertrag: vom Workflow gefunden, aber noch nicht in main.
+    const p = data.github.pending.find((x) => x.source === c.source);
+    const pStatus = (rule) => p?.rules.find((r) => r.rule === rule)?.status;
+    const known = new Set(c.findings.map((f) => f.title));
+    return el("div", { className: "card" },
+      el("h3", { textContent: c.title }),
+      el("div", { className: "muted", textContent: `${c.source} · ${c.result}` }),
+      p ? el("div", {}, badge("Drift", "review"), " ", ghLink(p.pr.url, `PR #${p.pr.number}`),
+        ` noch nicht gemergt: ${p.result}`) : null,
+      el("table", {},
+        p ? el("thead", {}, el("tr", {}, ...["Regel", "main", `PR #${p.pr.number}`, "Klausel"].map((h) => el("th", { textContent: h })))) : null,
+        el("tbody", {}, c.rules.map((r) => el("tr", {},
+          el("td", { textContent: r.rule }), el("td", {}, badge(r.status)),
+          p ? el("td", {}, pStatus(r.rule) === r.status ? el("span", { className: "muted", textContent: "unverändert" }) : badge(pStatus(r.rule) ?? "–")) : null,
+          el("td", { textContent: r.clause, className: "muted" }))))),
+      c.findings.map((f) => findingDetails(f)),
+      p ? p.findings.filter((f) => !known.has(f.title)).map((f) => findingDetails(f, `neu in PR #${p.pr.number}: `)) : null);
+  }));
 }
 
 function view(...nodes) { document.getElementById("view").replaceChildren(...nodes); }
@@ -181,7 +215,7 @@ function render() {
 
 fetch("/data.json").then((r) => r.json()).then((d) => {
   data = d;
-  document.getElementById("meta").textContent = `Stand ${fmt(d.generated_at)} · liest issues/, deploys/ und compliance-findings/ aus dem Repo`;
+  document.getElementById("meta").textContent = `Stand ${fmt(d.generated_at)} · liest issues/, deploys/ und compliance-findings/ aus dem Repo, Workflow-Läufe und Drift-PRs von GitHub`;
   renderStats();
   render();
 }).catch((e) => { document.getElementById("meta").textContent = "Fehler beim Laden: " + e; });
