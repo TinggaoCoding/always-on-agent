@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Always-On Ops</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --card: #fff; --text: #1c2330; --muted: #667085; --line: #e3e6eb;
+    --p0: #c62828; --p1: #e65100; --p2: #b58900; --p3: #2e7d32; --none: #667085;
+    --ok: #2e7d32; --warn: #b58900; --bad: #c62828; --accent: #1f4fd8;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #111418; --card: #1a1f26; --text: #e6e9ee; --muted: #98a2b3; --line: #2b323c; --accent: #7aa2ff; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; background: var(--bg); color: var(--text); }
+  header { padding: 20px 24px 0; max-width: 1100px; margin: 0 auto; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .sub { color: var(--muted); font-size: 12px; }
+  main { max-width: 1100px; margin: 0 auto; padding: 16px 24px 48px; }
+  .stats { display: flex; gap: 12px; flex-wrap: wrap; margin: 16px 0; }
+  .stat { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 10px 16px; min-width: 120px; }
+  .stat b { display: block; font-size: 22px; }
+  .stat span { color: var(--muted); font-size: 12px; }
+  nav { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin-bottom: 16px; }
+  nav button { background: none; border: 0; padding: 8px 14px; font: inherit; color: var(--muted); cursor: pointer; border-bottom: 2px solid transparent; }
+  nav button[aria-selected="true"] { color: var(--text); border-color: var(--accent); font-weight: 600; }
+  .filters { display: flex; gap: 12px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
+  input[type=search], select { font: inherit; padding: 5px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--card); color: var(--text); }
+  table { width: 100%; border-collapse: collapse; background: var(--card); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-size: 12px; color: var(--muted); font-weight: 600; }
+  tr:last-child td { border-bottom: 0; }
+  tr.row { cursor: pointer; }
+  tr.row:hover td { background: color-mix(in srgb, var(--accent) 6%, transparent); }
+  .badge { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 12px; font-weight: 600; color: #fff; background: var(--none); }
+  .P0, .violation, .High { background: var(--bad); }
+  .P1 { background: var(--p1); }
+  .P2, .review, .Medium { background: var(--p2); }
+  .P3, .compliant, .Low { background: var(--ok); }
+  .chip { display: inline-block; padding: 0 7px; margin: 0 4px 2px 0; border: 1px solid var(--line); border-radius: 10px; font-size: 12px; color: var(--muted); }
+  .chip.human { border-color: var(--p1); color: var(--p1); font-weight: 600; }
+  .detail td { background: var(--bg); }
+  .detail h4 { margin: 8px 0 4px; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+  .detail pre { margin: 0; white-space: pre-wrap; font: inherit; }
+  .muted { color: var(--muted); }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; margin-bottom: 16px; }
+  .card h3 { margin: 0 0 2px; font-size: 16px; }
+  .card table { margin: 10px 0; }
+  details { border-top: 1px solid var(--line); padding: 8px 0; }
+  details summary { cursor: pointer; font-weight: 600; }
+  dl { margin: 8px 0 0; display: grid; grid-template-columns: 140px 1fr; gap: 4px 12px; }
+  dt { color: var(--muted); }
+  dd { margin: 0; }
+  .empty { padding: 24px; text-align: center; color: var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Always-On Ops</h1>
+  <div class="sub" id="meta">lädt …</div>
+</header>
+<main>
+  <div class="stats" id="stats"></div>
+  <nav role="tablist" id="tabs"></nav>
+  <section id="view"></section>
+</main>
+<script>
+// Alle Texte aus den Repo-Daten gehen über textContent, nie über innerHTML.
+const el = (tag, props = {}, ...kids) => {
+  const e = Object.assign(document.createElement(tag), props);
+  for (const k of kids.flat()) if (k != null) e.append(k);
+  return e;
+};
+const badge = (text, cls) => el("span", { className: `badge ${cls ?? text}`, textContent: text });
+const fmt = (iso) => iso ? iso.replace("T", " ").replace(/:\d\d(\.\d+)?Z$/, " UTC") : "–";
+
+let data, tab = "issues";
+const state = { sev: "", human: false, q: "" };
+
+const TABS = { issues: "Issues", deploys: "Deploys", compliance: "Compliance" };
+
+function renderStats() {
+  const open = data.issues.filter((i) => i.status === "open");
+  const comp = data.compliance.flatMap((c) => c.rules);
+  const stat = (n, label) => el("div", { className: "stat" }, el("b", { textContent: n }), el("span", { textContent: label }));
+  document.getElementById("stats").replaceChildren(
+    stat(open.length, "offene Issues"),
+    stat(data.issues.filter((i) => i.severity === "P0" || i.severity === "P1").length, "P0 / P1"),
+    stat(data.issues.filter((i) => (i.labels || []).includes("needs-human-review")).length, "needs-human-review"),
+    stat(data.issues.filter((i) => !i.comments.some((c) => c.author === "triage-agent")).length, "nicht getriagt"),
+    stat(comp.filter((r) => r.status === "violation").length, "Vertragsverstöße"),
+  );
+}
+
+function renderTabs() {
+  document.getElementById("tabs").replaceChildren(...Object.entries(TABS).map(([k, label]) =>
+    el("button", { textContent: label, role: "tab", ariaSelected: String(k === tab), onclick: () => { tab = k; render(); } })));
+}
+
+// "**Titel:** …\n**Severity:** …" aus dem Triage-Kommentar in Abschnitte zerlegen
+function triageSections(body) {
+  const parts = [...body.matchAll(/\*\*([^:*]+):\*\*\s*([\s\S]*?)(?=\n\*\*[^:*]+:\*\*|$)/g)];
+  return parts.length ? parts.map((m) => [m[1], m[2].trim()]) : [["Kommentar", body]];
+}
+
+function issueDetail(i) {
+  const box = el("div", {}, el("h4", { textContent: "Meldung" }), el("pre", { textContent: i.body }));
+  for (const c of i.comments) {
+    box.append(el("h4", { textContent: `${c.author} · ${fmt(c.created_at)}` }));
+    for (const [k, v] of triageSections(c.body)) {
+      box.append(el("pre", {}, el("b", { textContent: k + ": " }), v));
+    }
+  }
+  if (!i.comments.length) box.append(el("h4", { textContent: "Noch nicht getriagt" }));
+  return box;
+}
+
+function renderIssues() {
+  const q = state.q.toLowerCase();
+  const rows = data.issues.filter((i) =>
+    (!state.sev || String(i.severity) === state.sev) &&
+    (!state.human || (i.labels || []).includes("needs-human-review")) &&
+    (!q || `${i.id} ${i.title} ${i.body}`.toLowerCase().includes(q)));
+
+  const sevSel = el("select", { onchange: (e) => { state.sev = e.target.value; render(); } },
+    ...[["", "alle Severities"], ["P0", "P0"], ["P1", "P1"], ["P2", "P2"], ["P3", "P3"], ["null", "ohne"]]
+      .map(([v, t]) => el("option", { value: v, textContent: t, selected: v === state.sev })));
+  const search = el("input", { type: "search", placeholder: "Suchen …", value: state.q,
+    oninput: (e) => { state.q = e.target.value; renderIssues();
+      const s = document.querySelector("input[type=search]"); s.focus(); s.setSelectionRange(s.value.length, s.value.length); } });
+  const human = el("input", { type: "checkbox", checked: state.human, onchange: (e) => { state.human = e.target.checked; render(); } });
+
+  const tbody = el("tbody");
+  for (const i of rows) {
+    const detail = el("tr", { className: "detail", hidden: true }, el("td", { colSpan: 5 }, issueDetail(i)));
+    tbody.append(
+      el("tr", { className: "row", onclick: () => { detail.hidden = !detail.hidden; } },
+        el("td", { textContent: i.id }),
+        el("td", {}, badge(i.severity ?? "–", i.severity ?? "none")),
+        el("td", { textContent: i.title }),
+        el("td", {}, (i.labels || []).map((l) => el("span", { className: "chip" + (l === "needs-human-review" ? " human" : ""), textContent: l }))),
+        el("td", { textContent: i.assignee ?? "–", className: i.assignee ? "" : "muted" })),
+      detail);
+  }
+  view(el("div", { className: "filters" }, sevSel, search, el("label", {}, human, " nur needs-human-review")),
+    rows.length ? el("table", {}, el("thead", {}, el("tr", {}, ...["ID", "Severity", "Titel", "Labels", "Assignee"].map((h) => el("th", { textContent: h })))), tbody)
+      : el("div", { className: "empty", textContent: "Keine Issues für diesen Filter." }));
+}
+
+function renderDeploys() {
+  const tbody = el("tbody", {}, data.deploys.map((d) => el("tr", {},
+    el("td", { textContent: fmt(d.deployed_at) }),
+    el("td", {}, el("b", { textContent: d.service }), " ", d.version),
+    el("td", { textContent: d.summary }),
+    el("td", { textContent: (d.files_changed || []).join(", "), className: "muted" }),
+    el("td", {}, d.rollback_available ? `zurück auf ${d.last_known_good}` : el("span", { className: "muted", textContent: "kein Rollback" })))));
+  view(el("table", {}, el("thead", {}, el("tr", {}, ...["Zeitpunkt", "Service", "Zusammenfassung", "Dateien", "Rollback"].map((h) => el("th", { textContent: h })))), tbody));
+}
+
+function renderCompliance() {
+  view(...data.compliance.map((c) => el("div", { className: "card" },
+    el("h3", { textContent: c.title }),
+    el("div", { className: "muted", textContent: `${c.source} · ${c.result}` }),
+    el("table", {}, el("tbody", {}, c.rules.map((r) => el("tr", {},
+      el("td", { textContent: r.rule }), el("td", {}, badge(r.status)), el("td", { textContent: r.clause, className: "muted" }))))),
+    c.findings.map((f) => el("details", {},
+      el("summary", {}, badge(f.fields.severity ?? "–"), " ", f.title),
+      el("dl", {}, Object.entries(f.fields).filter(([k]) => k !== "severity").flatMap(([k, v]) =>
+        [el("dt", { textContent: k }), el("dd", { textContent: v.replace(/`/g, "") })]))))
+  )));
+}
+
+function view(...nodes) { document.getElementById("view").replaceChildren(...nodes); }
+
+function render() {
+  renderTabs();
+  ({ issues: renderIssues, deploys: renderDeploys, compliance: renderCompliance })[tab]();
+}
+
+fetch("/data.json").then((r) => r.json()).then((d) => {
+  data = d;
+  document.getElementById("meta").textContent = `Stand ${fmt(d.generated_at)} · liest issues/, deploys/ und compliance-findings/ aus dem Repo`;
+  renderStats();
+  render();
+}).catch((e) => { document.getElementById("meta").textContent = "Fehler beim Laden: " + e; });
+</script>
+</body>
+</html>
